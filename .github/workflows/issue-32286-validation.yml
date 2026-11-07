@@ -16,6 +16,7 @@ jobs:
     env:
       EXPECTED_HEAD: 4428526edbd10300acb74efe75e5586da1cf29fa
       PR_BASE: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
+      GUARD_SCRIPT_COMMIT: 062f8f6851c4aaa6ccc0fbdb3714652bbf4d4b10
     steps:
       - name: Check out pinned public candidate without storing credentials
         run: |
@@ -24,7 +25,7 @@ jobs:
           git remote add origin https://github.com/saiananth1/t3code.git
           git config remote.origin.promisor true
           git config remote.origin.partialclonefilter blob:none
-          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD" "$PR_BASE"
+          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD" "$PR_BASE" "$GUARD_SCRIPT_COMMIT"
           git config core.sparseCheckout true
           printf '/*\n!/.repos/\n!/apps/mobile/modules/t3-terminal/Vendor/**/*.a\n' > .git/info/sparse-checkout
           git -c advice.detachedHead=false checkout --detach "$EXPECTED_HEAD"
@@ -33,10 +34,10 @@ jobs:
       - name: Extend existing scenario table with notification and user-stop guards
         run: |
           set -euo pipefail
-          printf '%s' 'H4sIAAAAAAAC/+1aW1PcNhR+51conj54g2XY5bYsQ0NC6ZSZJG2Btg8ZJlFs7a6DLxtZhlKy/71Hste2bPmyQNuX8pDdlY+OdK76PjkYY0S2yGIRb8WU3VK2FTNnK2LOnMacEe5FIb4dbbEk5F5A35J7ymwOj2web2xubqLPj5x7coLweLg3tPbRpvw8RCcnG0j8GfTPhceoi+Mwiv6ihpUN35Eb9QcmU04ZJiyA4c1i+DOdRowq4zGPFoU4zlSVnhVzsLKOeKj8ULVrx3HgxQHh4AYXM+pE4Jl7kJUmj8apyaPxrrU/zm0WfyQGL3Kbfk2IbzIaJwH9ifrurwlNqP2Rk5mFjB+J5yeMGoOj2jwvvmIJNc17Dya9REUYImbPKL+aM0rcX1j0hToiMiaXA+fuYGBDhOIPw+tX9lexlli00L9MvYSQE4UxR3fM4/R9xL2p58gI/wHeQsfobDoFvfY0NI3fYjKjb73A4xeZ8Vci6NqZxsBc6UdomoRyay+ROUAPxXi+Nky4SMJzF9aTn3YAI+anlY8nYUm7DOMELJt89xA7NCTMi5afwC6t2veRS6Xe9EsPxVHEWzRnQaC3NORxarqpWISyZxP0QR1G6KE6gJDnTtCZkO+zNQfiyqmr7s6qK+X3CzpBBrjIzqYYOqksTTSPmIjBpAiLRmTBolvPpewcHE1Chwr5AFzsX1I/zUPbyx9p5keOkzDoBa/5BIXRnW4Fcu9HBNRq3IaQbYvktnSPvI6tw+LM9ULiT4ShdvYDbaKhVlgkRJo8k1JGaUUTqNd3NBZlIqTzr92hDVLRztAiBD7lCWSX4UTBwqcNwZVyjLf5V1RJpqFZaFkbq488Na3LI31zmycsxFB7gZ0s3Edk+FPTTxh4BXs4hy30sVFstUdwM+vK8/XRbTGtV/kisLpXSq/q/CpbENyV+H67qPBLm2AIht1S4boLOm1TSJhIIeniFrG8modPKhjucZ+2LPM8BQVNIk3YNpE4SpgDe3lAN14IphvQV+lMzAK0EN8YFhIf5644ZK41FSm9knDYjsimKUCLxi6RBAGBjEXGG+LczFiUhC4MfoZeFHLUPLO7L1wrv5flU7QQLUbTE3tO4hR2FMKrkkHHx8c1dIi+fWuVLEG6FlEdhuwSr8LK3BBviszOnfTRqCClDHZooZZZeHG5oQCgeE59H7BPE3S8FM8vQ7KI5xE3AS+mbSW2p5B2ZgFEM0g5QMffZ53H9ly59aIPZaKDF0cpHt4ZblsHgId3DvZKFED8+WUEOUFgsK0M5bqWRxVzwE1vpJdeswByBPeKTw9/62D9Uc/wr5MpunXWTzRUSrSyR0TCFAdULQ37bEZRsXK7PCmhGxyjtRnIKhf296y9MSTD7s7IUrmRjH+bTbo1XS9eiK2bMPc0gg4WlngN9WOqnUUSHoFKhcCYYhDc4DlisaNVSjUUcdF4hKPyPy9NvaQq+RcuZHoX8vjmEkZwgTvXCGggS8CXJoDscklA7NGmzW7+1CYystMnKcAXohelpyZBTGdNKhHgoBAysa9TQI60gQVrEi7kCK3ZtZcRqAULgH8cFNyAl3oSb8JMqDOxAnbsSbuIns4A6qg/sTHdyX5uD1SE53+DKqowlfA1bDXUgMd+MwXAMruO33c6SpAuIbc1VHZPpm7FNSSkdgum0SG9UGTk9ccDNtwd2kBfehLLgvYcH96AruRVZwH6qC3d1Wg==' | base64 --decode | gzip --decompress > "$RUNNER_TEMP/recovery-evidence/guards.patch"
-          git apply --check "$RUNNER_TEMP/recovery-evidence/guards.patch"
-          git apply "$RUNNER_TEMP/recovery-evidence/guards.patch"
+          git show "$GUARD_SCRIPT_COMMIT:.github/scripts/validate-recovery-guards.py" > "$RUNNER_TEMP/recovery-evidence/add-guards.py"
+          python3 "$RUNNER_TEMP/recovery-evidence/add-guards.py"
           git diff --check
+          git diff > "$RUNNER_TEMP/recovery-evidence/guards.patch"
 
       - name: Install repository toolchain
         uses: ./.github/actions/setup-ci-deps
