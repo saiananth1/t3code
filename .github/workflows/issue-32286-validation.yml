@@ -18,23 +18,24 @@ jobs:
       FIX_BASE: 67eebaca23f8f7bc46e8817434087fc9c5acf8e3
       FIX_HEAD: 5de22fa1f8ea2b3d03c73e9bfe40641cce1e41f7
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: |
-            /*
-            !/.repos/
-            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
-          sparse-checkout-cone-mode: false
-
-      - name: Integrate the pinned recovery fix without replacing the reported regression
+      - name: Check out pinned public source without storing credentials
         run: |
           set -euo pipefail
+          git init .
+          git remote add origin https://github.com/saiananth1/t3code.git
+          git config remote.origin.promisor true
+          git config remote.origin.partialclonefilter blob:none
+          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD"
+          git config core.sparseCheckout true
+          printf '/*\n!/.repos/\n!/apps/mobile/modules/t3-terminal/Vendor/**/*.a\n' > .git/info/sparse-checkout
+          git -c advice.detachedHead=false checkout --detach "$EXPECTED_HEAD"
           mkdir -p "$RUNNER_TEMP/recovery-evidence"
+
+      - name: Integrate pinned recovery fix while retaining the reported regression
+        run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          git fetch --no-tags https://github.com/pingdotgg/t3code.git "$FIX_BASE" "$FIX_HEAD"
+          git fetch --no-tags --depth=1 --filter=blob:none https://github.com/pingdotgg/t3code.git "$FIX_BASE" "$FIX_HEAD"
           git diff --binary "$FIX_BASE" "$FIX_HEAD" -- \
             apps/server/src/orchestration-v2/Orchestrator.ts \
             apps/server/src/orchestration-v2/ProjectionStore.ts \
@@ -51,12 +52,12 @@ jobs:
           test -z "$(git diff "$EXPECTED_HEAD" -- apps/server/src/orchestration-v2/runtimeLayer.test.ts)"
           git diff --cached --stat
 
-      - name: Install the repository toolchain
+      - name: Install repository toolchain
         uses: ./.github/actions/setup-ci-deps
         with:
           save-pnpm-store: 'false'
 
-      - name: Format only integrated files
+      - name: Format integrated files and create local candidate
         run: |
           set -euo pipefail
           mapfile -t files < <(git diff --name-only "$EXPECTED_HEAD")
@@ -86,14 +87,14 @@ jobs:
       - name: Prepare desktop dependency for changed-package checks
         run: vp run --filter @t3tools/desktop ensure:electron
 
-      - name: Run the repository changed-file verification
+      - name: Run changed-file verification
         run: |
           set -euo pipefail
           vp run check:changed "$EXPECTED_HEAD" --concurrency 1 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/check-changed.log"
           git diff --exit-code
           git rev-parse HEAD > "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt"
 
-      - name: Publish only the validated candidate to a separate fork branch
+      - name: Publish validated candidate to separate fork branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -102,7 +103,7 @@ jobs:
           test "$(git rev-parse HEAD^)" = "$EXPECTED_HEAD"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push \
             https://github.com/saiananth1/t3code.git HEAD:refs/heads/work/issue-32286-validated-38e7eec
-          echo "Candidate published; the upstream PR branch has NOT been modified." >> "$GITHUB_STEP_SUMMARY"
+          echo "Candidate published; upstream PR branch has NOT been modified." >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Capture scoped diagnostics
