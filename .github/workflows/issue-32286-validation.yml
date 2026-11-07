@@ -1,0 +1,132 @@
+name: Validate usage-limit recovery integration
+
+on:
+  push:
+    branches: [work/issue-32286-validation]
+    paths: [.github/workflows/issue-32286-validation.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    if: github.repository == 'saiananth1/t3code'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      EXPECTED_HEAD: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
+      FIX_BASE: 67eebaca23f8f7bc46e8817434087fc9c5acf8e3
+      FIX_HEAD: 5de22fa1f8ea2b3d03c73e9bfe40641cce1e41f7
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/.repos/
+            !/apps/mobile/modules/t3-terminal/Vendor/**/*.a
+          sparse-checkout-cone-mode: false
+
+      - name: Integrate the pinned recovery fix without replacing the reported regression
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/recovery-evidence"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          git fetch --no-tags https://github.com/pingdotgg/t3code.git "$FIX_BASE" "$FIX_HEAD"
+          git diff --binary "$FIX_BASE" "$FIX_HEAD" -- \
+            apps/server/src/orchestration-v2/Orchestrator.ts \
+            apps/server/src/orchestration-v2/ProjectionStore.ts \
+            apps/server/src/orchestration-v2/ProjectionStore.test.ts \
+            apps/server/src/orchestration-v2/threadHistoryPaging.ts \
+            apps/server/src/orchestration-v2/threadHistoryPaging.test.ts \
+            packages/client-runtime/src/state/threadExecution.ts \
+            packages/client-runtime/src/state/threadExecution.test.ts \
+            packages/shared/src/orchestrationV2ThreadError.ts \
+            > "$RUNNER_TEMP/recovery-evidence/integration.patch"
+          git apply --3way --index "$RUNNER_TEMP/recovery-evidence/integration.patch" 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/apply.log"
+          git diff --check
+          test -z "$(git ls-files --unmerged)"
+          test -z "$(git diff "$EXPECTED_HEAD" -- apps/server/src/orchestration-v2/runtimeLayer.test.ts)"
+          git diff --cached --stat
+
+      - name: Install the repository toolchain
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          save-pnpm-store: 'false'
+
+      - name: Format only integrated files
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only "$EXPECTED_HEAD")
+          test "${#files[@]}" = 8
+          vp fmt "${files[@]}"
+          git diff --check
+          git config user.name saiananth1
+          git config user.email 14952230+saiananth1@users.noreply.github.com
+          git add -- "${files[@]}"
+          git commit -m 'fix(server): preserve usage-limit recovery across notification wakes' \
+            -m 'Adapt the recovery selection, command validation, client Resume and bounded snapshot changes from yspreen/t3code PR #31219 (5de22fa1f8ea2b3d03c73e9bfe40641cce1e41f7), based on the earlier work in #22775. Keep the independently added wake-after-arm regression intact.' \
+            -m 'Assisted by GPT-6 Astra Pro via ChatGPT. No real provider calls or quota used by validation.'
+          git diff "$EXPECTED_HEAD" HEAD > "$RUNNER_TEMP/recovery-evidence/candidate.patch"
+
+      - name: Run server recovery and bounded snapshot regressions
+        working-directory: apps/server
+        run: |
+          set -euo pipefail
+          vp test run src/orchestration-v2/runtimeLayer.test.ts src/orchestration-v2/ProjectionStore.test.ts src/orchestration-v2/threadHistoryPaging.test.ts src/orchestration-v2/UsageLimitRecoveryWorker.test.ts 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/server-tests.log"
+
+      - name: Run client Resume regressions
+        working-directory: packages/client-runtime
+        run: |
+          set -euo pipefail
+          vp test run src/state/threadExecution.test.ts 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/client-tests.log"
+
+      - name: Prepare desktop dependency for changed-package checks
+        run: vp run --filter @t3tools/desktop ensure:electron
+
+      - name: Run the repository changed-file verification
+        run: |
+          set -euo pipefail
+          vp run check:changed "$EXPECTED_HEAD" --concurrency 1 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/check-changed.log"
+          git diff --exit-code
+          git rev-parse HEAD > "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt"
+
+      - name: Publish only the validated candidate to a separate fork branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = saiananth1/t3code
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_HEAD"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push \
+            https://github.com/saiananth1/t3code.git HEAD:refs/heads/work/issue-32286-validated-38e7eec
+          echo "Candidate published; the upstream PR branch has NOT been modified." >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Capture scoped diagnostics
+        if: always()
+        run: |
+          mkdir -p "$RUNNER_TEMP/recovery-evidence"
+          git status --short > "$RUNNER_TEMP/recovery-evidence/status.txt"
+          git diff > "$RUNNER_TEMP/recovery-evidence/working.diff"
+          git diff --cached > "$RUNNER_TEMP/recovery-evidence/index.diff"
+          tar -czf "$RUNNER_TEMP/recovery-evidence/recovery-sources.tar.gz" \
+            apps/server/src/orchestration-v2/Orchestrator.ts \
+            apps/server/src/orchestration-v2/ProjectionStore.ts \
+            apps/server/src/orchestration-v2/ProjectionStore.test.ts \
+            apps/server/src/orchestration-v2/runtimeLayer.test.ts \
+            apps/server/src/orchestration-v2/threadHistoryPaging.ts \
+            apps/server/src/orchestration-v2/threadHistoryPaging.test.ts \
+            packages/client-runtime/src/state/threadExecution.ts \
+            packages/client-runtime/src/state/threadExecution.test.ts \
+            packages/shared/src/orchestrationV2ThreadError.ts
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recovery-integration-evidence
+          path: ${{ runner.temp }}/recovery-evidence
+          retention-days: 7
