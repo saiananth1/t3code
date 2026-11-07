@@ -18,20 +18,21 @@ jobs:
       PR_BASE: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
       GUARD_SCRIPT_COMMIT: 062f8f6851c4aaa6ccc0fbdb3714652bbf4d4b10
     steps:
-      - name: Check out pinned public candidate without storing credentials
+      - name: Check out candidate with its parent for change detection
         run: |
           set -euo pipefail
           git init .
           git remote add origin https://github.com/saiananth1/t3code.git
           git config remote.origin.promisor true
           git config remote.origin.partialclonefilter blob:none
-          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD" "$PR_BASE" "$GUARD_SCRIPT_COMMIT"
+          git fetch --no-tags --filter=blob:none --depth=2 origin "$EXPECTED_HEAD" "$GUARD_SCRIPT_COMMIT"
           git config core.sparseCheckout true
           printf '/*\n!/.repos/\n!/apps/mobile/modules/t3-terminal/Vendor/**/*.a\n' > .git/info/sparse-checkout
           git -c advice.detachedHead=false checkout --detach "$EXPECTED_HEAD"
+          test "$(git merge-base HEAD "$PR_BASE")" = "$PR_BASE"
           mkdir -p "$RUNNER_TEMP/recovery-evidence"
 
-      - name: Extend existing scenario table with notification and user-stop guards
+      - name: Extend notification and user-stop scenarios
         run: |
           set -euo pipefail
           git show "$GUARD_SCRIPT_COMMIT:.github/scripts/validate-recovery-guards.py" > "$RUNNER_TEMP/recovery-evidence/add-guards.py"
@@ -57,7 +58,7 @@ jobs:
             -m 'Assisted by GPT-6 Astra Pro via ChatGPT.'
           git diff "$PR_BASE" HEAD > "$RUNNER_TEMP/recovery-evidence/candidate.patch"
 
-      - name: Prove all four notification regressions fail without the production fix
+      - name: Confirm regression cases fail without production fix
         working-directory: apps/server
         run: |
           set -euo pipefail
@@ -76,7 +77,7 @@ jobs:
           text = pathlib.Path(os.environ['RUNNER_TEMP'], 'recovery-evidence/baseline-regressions.log').read_text()
           text = re.sub(r'\x1b\[[0-9;]*m', '', text)
           assert re.search(r'Tests\s+4 failed', text), 'Expected four failing regression cases'
-          assert 'AssertionError' in text, 'Expected behavior assertions, not an import or setup error'
+          assert 'AssertionError' in text, 'Expected behavior assertions rather than setup failure'
           PY
           git diff --exit-code
 
