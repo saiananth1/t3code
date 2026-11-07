@@ -14,63 +14,70 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
-      EXPECTED_HEAD: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
-      FIX_BASE: 67eebaca23f8f7bc46e8817434087fc9c5acf8e3
-      FIX_HEAD: 5de22fa1f8ea2b3d03c73e9bfe40641cce1e41f7
+      EXPECTED_HEAD: 4428526edbd10300acb74efe75e5586da1cf29fa
+      PR_BASE: 38e7eec391ff400e2b268a6da68a78308fa5ff4a
     steps:
-      - name: Check out pinned public source without storing credentials
+      - name: Check out pinned public candidate without storing credentials
         run: |
           set -euo pipefail
           git init .
           git remote add origin https://github.com/saiananth1/t3code.git
           git config remote.origin.promisor true
           git config remote.origin.partialclonefilter blob:none
-          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD"
+          git fetch --no-tags --filter=blob:none --depth=1 origin "$EXPECTED_HEAD" "$PR_BASE"
           git config core.sparseCheckout true
           printf '/*\n!/.repos/\n!/apps/mobile/modules/t3-terminal/Vendor/**/*.a\n' > .git/info/sparse-checkout
           git -c advice.detachedHead=false checkout --detach "$EXPECTED_HEAD"
           mkdir -p "$RUNNER_TEMP/recovery-evidence"
 
-      - name: Integrate pinned recovery fix while retaining the reported regression
+      - name: Extend existing scenario table with notification and user-stop guards
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
-          git fetch --no-tags --depth=1 --filter=blob:none https://github.com/pingdotgg/t3code.git "$FIX_BASE" "$FIX_HEAD"
-          git diff --binary "$FIX_BASE" "$FIX_HEAD" -- \
-            apps/server/src/orchestration-v2/Orchestrator.ts \
-            apps/server/src/orchestration-v2/ProjectionStore.ts \
-            apps/server/src/orchestration-v2/ProjectionStore.test.ts \
-            apps/server/src/orchestration-v2/threadHistoryPaging.ts \
-            apps/server/src/orchestration-v2/threadHistoryPaging.test.ts \
-            packages/client-runtime/src/state/threadExecution.ts \
-            packages/client-runtime/src/state/threadExecution.test.ts \
-            packages/shared/src/orchestrationV2ThreadError.ts \
-            > "$RUNNER_TEMP/recovery-evidence/integration.patch"
-          git apply --3way --index "$RUNNER_TEMP/recovery-evidence/integration.patch" 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/apply.log"
+          printf '%s' 'H4sIAAAAAAAC/+1aW1PcNhR+51conj54g2XY5bYsQ0NC6ZSZJG2Btg8ZJlFs7a6DLxtZhlKy/71Hste2bPmyQNuX8pDdlY+OdK76PjkYY0S2yGIRb8WU3VK2FTNnK2LOnMacEe5FIb4dbbEk5F5A35J7ymwOj2web2xubqLPj5x7coLweLg3tPbRpvw8RCcnG0j8GfTPhceoi+Mwiv6ihpUN35Eb9QcmU04ZJiyA4c1i+DOdRowq4zGPFoU4zlSVnhVzsLKOeKj8ULVrx3HgxQHh4AYXM+pE4Jl7kJUmj8apyaPxrrU/zm0WfyQGL3Kbfk2IbzIaJwH9ifrurwlNqP2Rk5mFjB+J5yeMGoOj2jwvvmIJNc17Dya9REUYImbPKL+aM0rcX1j0hToiMiaXA+fuYGBDhOIPw+tX9lexlli00L9MvYSQE4UxR3fM4/R9xL2p58gI/wHeQsfobDoFvfY0NI3fYjKjb73A4xeZ8Vci6NqZxsBc6UdomoRyay+ROUAPxXi+Nky4SMJzF9aTn3YAI+anlY8nYUm7DOMELJt89xA7NCTMi5afwC6t2veRS6Xe9EsPxVHEWzRnQaC3NORxarqpWISyZxP0QR1G6KE6gJDnTtCZkO+zNQfiyqmr7s6qK+X3CzpBBrjIzqYYOqksTTSPmIjBpAiLRmTBolvPpewcHE1Chwr5AFzsX1I/zUPbyx9p5keOkzDoBa/5BIXRnW4Fcu9HBNRq3IaQbYvktnSPvI6tw+LM9ULiT4ShdvYDbaKhVlgkRJo8k1JGaUUTqNd3NBZlIqTzr92hDVLRztAiBD7lCWSX4UTBwqcNwZVyjLf5V1RJpqFZaFkbq488Na3LI31zmycsxFB7gZ0s3Edk+FPTTxh4BXs4hy30sVFstUdwM+vK8/XRbTGtV/kisLpXSq/q/CpbENyV+H67qPBLm2AIht1S4boLOm1TSJhIIeniFrG8modPKhjucZ+2LPM8BQVNIk3YNpE4SpgDe3lAN14IphvQV+lMzAK0EN8YFhIf5644ZK41FSm9knDYjsimKUCLxi6RBAGBjEXGG+LczFiUhC4MfoZeFHLUPLO7L1wrv5flU7QQLUbTE3tO4hR2FMKrkkHHx8c1dIi+fWuVLEG6FlEdhuwSr8LK3BBviszOnfTRqCClDHZooZZZeHG5oQCgeE59H7BPE3S8FM8vQ7KI5xE3AS+mbSW2p5B2ZgFEM0g5QMffZ53H9ly59aIPZaKDF0cpHt4ZblsHgId3DvZKFED8+WUEOUFgsK0M5bqWRxVzwE1vpJdeswByBPeKTw9/62D9Uc/wr5MpunXWTzRUSrSyR0TCFAdULQ37bEZRsXK7PCmhGxyjtRnIKhf296y9MSTD7s7IUrmRjH+bTbo1XS9eiK2bMPc0gg4WlngN9WOqnUUSHoFKhcCYYhDc4DlisaNVSjUUcdF4hKPyPy9NvaQq+RcuZHoX8vjmEkZwgTvXCGggS8CXJoDscklA7NGmzW7+1CYystMnKcAXohelpyZBTGdNKhHgoBAysa9TQI60gQVrEi7kCK3ZtZcRqAULgH8cFNyAl3oSb8JMqDOxAnbsSbuIns4A6qg/sTHdyX5uD1SE53+DKqowlfA1bDXUgMd+MwXAMruO33c6SpAuIbc1VHZPpm7FNSSkdgum0SG9UGTk9ccDNtwd2kBfehLLgvYcH96AruRVZwH6qC3d1Wg==' | base64 --decode | gzip --decompress > "$RUNNER_TEMP/recovery-evidence/guards.patch"
+          git apply --check "$RUNNER_TEMP/recovery-evidence/guards.patch"
+          git apply "$RUNNER_TEMP/recovery-evidence/guards.patch"
           git diff --check
-          test -z "$(git ls-files --unmerged)"
-          test -z "$(git diff "$EXPECTED_HEAD" -- apps/server/src/orchestration-v2/runtimeLayer.test.ts)"
-          git diff --cached --stat
 
       - name: Install repository toolchain
         uses: ./.github/actions/setup-ci-deps
         with:
           save-pnpm-store: 'false'
 
-      - name: Format integrated files and create local candidate
+      - name: Format and commit focused guard tests
         run: |
           set -euo pipefail
-          mapfile -t files < <(git diff --name-only "$EXPECTED_HEAD")
-          test "${#files[@]}" = 8
-          vp fmt "${files[@]}"
+          vp fmt apps/server/src/orchestration-v2/runtimeLayer.test.ts
           git diff --check
           git config user.name saiananth1
           git config user.email 14952230+saiananth1@users.noreply.github.com
-          git add -- "${files[@]}"
-          git commit -m 'fix(server): preserve usage-limit recovery across notification wakes' \
-            -m 'Adapt the recovery selection, command validation, client Resume and bounded snapshot changes from yspreen/t3code PR #31219 (5de22fa1f8ea2b3d03c73e9bfe40641cce1e41f7), based on the earlier work in #22775. Keep the independently added wake-after-arm regression intact.' \
-            -m 'Assisted by GPT-6 Astra Pro via ChatGPT. No real provider calls or quota used by validation.'
-          git diff "$EXPECTED_HEAD" HEAD > "$RUNNER_TEMP/recovery-evidence/candidate.patch"
+          git add apps/server/src/orchestration-v2/runtimeLayer.test.ts
+          git commit -m 'test(server): guard notification recovery across arming and stop' \
+            -m 'Extend the existing recovery matrix without disabling assertions: notifications before and after arming, Stop before and after arming, explicit rearm and idempotent continuation.' \
+            -m 'Assisted by GPT-6 Astra Pro via ChatGPT.'
+          git diff "$PR_BASE" HEAD > "$RUNNER_TEMP/recovery-evidence/candidate.patch"
+
+      - name: Prove all four notification regressions fail without the production fix
+        working-directory: apps/server
+        run: |
+          set -euo pipefail
+          root=$(git rev-parse --show-toplevel)
+          mapfile -t production_files < <(git diff --name-only "$PR_BASE" "$EXPECTED_HEAD")
+          for file in "${production_files[@]}"; do git show "$PR_BASE:$file" > "$root/$file"; done
+          set +e
+          vp test run src/orchestration-v2/runtimeLayer.test.ts -t 'guards a scheduled usage-limit continuation against (wake-after-arm|wake-before-arm|stop-after-arm-wake|stop-before-arm-wake)$' > "$RUNNER_TEMP/recovery-evidence/baseline-regressions.log" 2>&1
+          result=$?
+          set -e
+          git -C "$root" restore --worktree --source=HEAD -- "${production_files[@]}"
+          cat "$RUNNER_TEMP/recovery-evidence/baseline-regressions.log"
+          test "$result" -ne 0
+          python3 - <<'PY'
+          import os, pathlib, re
+          text = pathlib.Path(os.environ['RUNNER_TEMP'], 'recovery-evidence/baseline-regressions.log').read_text()
+          text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+          assert re.search(r'Tests\s+4 failed', text), 'Expected four failing regression cases'
+          assert 'AssertionError' in text, 'Expected behavior assertions, not an import or setup error'
+          PY
+          git diff --exit-code
 
       - name: Run server recovery and bounded snapshot regressions
         working-directory: apps/server
@@ -90,7 +97,7 @@ jobs:
       - name: Run changed-file verification
         run: |
           set -euo pipefail
-          vp run check:changed "$EXPECTED_HEAD" --concurrency 1 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/check-changed.log"
+          vp run check:changed "$PR_BASE" --concurrency 1 2>&1 | tee "$RUNNER_TEMP/recovery-evidence/check-changed.log"
           git diff --exit-code
           git rev-parse HEAD > "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt"
 
@@ -102,7 +109,7 @@ jobs:
           test "$GITHUB_REPOSITORY" = saiananth1/t3code
           test "$(git rev-parse HEAD^)" = "$EXPECTED_HEAD"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push \
-            https://github.com/saiananth1/t3code.git HEAD:refs/heads/work/issue-32286-validated-38e7eec
+            https://github.com/saiananth1/t3code.git HEAD:refs/heads/work/issue-32286-validated-guards
           echo "Candidate published; upstream PR branch has NOT been modified." >> "$GITHUB_STEP_SUMMARY"
           cat "$RUNNER_TEMP/recovery-evidence/candidate-sha.txt" >> "$GITHUB_STEP_SUMMARY"
 
